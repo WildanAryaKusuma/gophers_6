@@ -2,6 +2,9 @@ package inventory
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/fatih/color"
 )
 
@@ -11,8 +14,17 @@ type Inventory struct {
 	stok       int
 }
 
+var dataAwal = []Inventory{
+	{namaBarang: "Indomie Goreng", harga: 3000, stok: 50},
+	{namaBarang: "Beras 5kg", harga: 75000, stok: 10},
+	{namaBarang: "Minyak Goreng 2L", harga: 14000, stok: 100},
+}
+
+const jumlahPenyerbuFlashSale = 1000
+
 func TokoKelontong() {
-	var daftarBarang []Inventory
+	daftarBarang := make([]Inventory, len(dataAwal))
+	copy(daftarBarang, dataAwal)
 
 	for {
 		var opsi int
@@ -22,9 +34,10 @@ func TokoKelontong() {
 		fmt.Println("1. Tambah Barang ke Gudang")
 		fmt.Println("2. Lihat Semua Stok Barang")
 		fmt.Println("3. Beli Barang")
-		fmt.Println("4. Keluar")
+		fmt.Println("4. Flash Sale 12.12")
+		fmt.Println("5. Keluar")
 		fmt.Print("\n")
-		fmt.Print("Pilih Menu (1-4): ")
+		fmt.Print("Pilih Menu (1-5): ")
 		fmt.Scan(&opsi)
 
 		if opsi == 1 {
@@ -117,6 +130,64 @@ func TokoKelontong() {
 			fmt.Println("\n--------------------------------------------")
 
 		} else if opsi == 4 {
+			if len(daftarBarang) == 0 {
+				color.Red("Inventory masih kosong!")
+				continue
+			}
+
+			fmt.Println("\n= DAFTAR BARANG =")
+			for i, barang := range daftarBarang {
+				fmt.Printf("ID: %d | Nama: %-18s | Stok: %-5d | Harga: Rp %d\n",
+					i+1, barang.namaBarang, barang.stok, barang.harga)
+			}
+
+			var pilihan int
+			fmt.Print("\nPilih ID barang untuk FLASH SALE 12.12: ")
+			fmt.Scan(&pilihan)
+
+			if pilihan < 1 || pilihan > len(daftarBarang) {
+				color.Red("[SISTEM]: ID barang tidak valid!")
+				continue
+			}
+
+			barang := &daftarBarang[pilihan-1]
+			jumlahPenyerbu := jumlahPenyerbuFlashSale
+
+			fmt.Printf("\nSERBUAN 12.12 untuk \"%s\"\n", barang.namaBarang)
+			fmt.Printf("Stok %d, penyerbu %d orang.\n", barang.stok, jumlahPenyerbu)
+
+			var wg sync.WaitGroup
+			terjual := 0
+
+			mulai := time.Now()
+
+			for i := 0; i < jumlahPenyerbu; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+
+					if barang.stok > 0 {
+							time.Sleep(time.Microsecond)
+							barang.stok--
+							terjual++
+					}
+				}()
+			}
+
+			wg.Wait()
+			durasi := time.Since(mulai)
+
+			fmt.Println("\n= FLASH SALE SELESAI =")
+			fmt.Printf("Waktu proses : %.2fms\n", float64(durasi.Microseconds())/1000)
+			fmt.Printf("Unit terjual : %d unit\n", terjual)
+			fmt.Printf("Sisa stok    : %d unit\n", barang.stok)
+
+			if barang.stok < 0 {
+				color.Red("BAHAYA! Stok %s MINUS %d -- Toko menjual barang yang tidak ada!",
+					barang.namaBarang, -barang.stok)
+			}
+
+		} else if opsi == 5 {
 			color.Green("Sampai jumpa! gawe gawe gawe")
 			return
 
