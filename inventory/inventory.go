@@ -157,7 +157,9 @@ func TokoKelontong() {
 			fmt.Printf("Stok %d, penyerbu %d orang.\n", barang.stok, jumlahPenyerbu)
 
 			var wg sync.WaitGroup
+			var mu sync.Mutex // <- Mesin Transaksi Aman: gerbang berkunci
 			terjual := 0
+			gagal := 0
 
 			mulai := time.Now()
 
@@ -166,10 +168,15 @@ func TokoKelontong() {
 				go func() {
 					defer wg.Done()
 
+					mu.Lock()
+					defer mu.Unlock()
+
 					if barang.stok > 0 {
-							time.Sleep(time.Microsecond)
-							barang.stok--
-							terjual++
+						time.Sleep(time.Microsecond)
+						barang.stok--
+						terjual++
+					} else {
+						gagal++
 					}
 				}()
 			}
@@ -179,12 +186,16 @@ func TokoKelontong() {
 
 			fmt.Println("\n= FLASH SALE SELESAI =")
 			fmt.Printf("Waktu proses : %.2fms\n", float64(durasi.Microseconds())/1000)
-			fmt.Printf("Unit terjual : %d unit\n", terjual)
+			fmt.Printf("Berhasil beli: %d unit\n", terjual)
+			fmt.Printf("Gagal (kehabisan): %d pembeli\n", gagal)
 			fmt.Printf("Sisa stok    : %d unit\n", barang.stok)
 
 			if barang.stok < 0 {
 				color.Red("BAHAYA! Stok %s MINUS %d -- Toko menjual barang yang tidak ada!",
 					barang.namaBarang, -barang.stok)
+			} else {
+				color.Green("AMAN! Terjual pas %d unit, stok %s tidak pernah minus.",
+					terjual, barang.namaBarang)
 			}
 
 		} else if opsi == 5 {
