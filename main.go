@@ -1,74 +1,67 @@
 package main
 
 import (
-	"fmt"
+	"belajar-golang/config"
+	"belajar-golang/internal/handler"
+	"belajar-golang/internal/repository"
+	"belajar-golang/internal/service"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"belajar-golang/inventory"
+	"github.com/gofiber/fiber/v3"
 )
 
-type Products struct {
-	gorm.Model
-	Nama  string
-	Harga int
-	Stok  int
-}
-
 func main() {
-	dsn := "host=localhost port=5432 user=postgres password=Mcrazor28 dbname=tokoanu sslmode=disable"
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := config.ConnectPostgres()
 	if err != nil {
-		log.Fatal("Gagal membuka koneksi ke database: ", err)
+		log.Fatal(err)
 	}
-	fmt.Println("Berhasil konek ke database")
 
-	// if err := db.AutoMigrate(&Products{}); err != nil {
-	// 	log.Fatal("Gagal migrasi: ", err)
-	// }
-	// fmt.Println("Berhasil migrasi produk")
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Gagal membuka database: ", err)
+	}
 
-	// ===== CREATE =====
-	// produkBaru := []Products{
-	// 	{Nama: "Beras Petruk 5kg", Harga: 120000, Stok: 10},
-	// 	{Nama: "Gula 500g", Harga: 10000, Stok: 50},
-	// }
-	// if err := db.Create(&produkBaru).Error; err != nil {
-	// 	log.Fatal("Gagal insert produk: ", err)
-	// }
-	// fmt.Println("Berhasil insert produk baru")
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
-	// ===== READ (semua data) =====
-	// var semuaProduk []Products
-	// db.Find(&semuaProduk)
+	inventoryRepo := repository.NewInventoryRepository(db)
+	inventoryService := service.NewInventoryService(inventoryRepo)
+	inventoryHandler := handler.NewInventoryHandler(inventoryService)
 
-	// fmt.Println("\nDaftar Semua Produk")
-	// fmt.Println("ID | Nama | Harga | Stok")
-	// for _, p := range semuaProduk {
-	// 	fmt.Println(p.ID, p.Nama, p.Harga, p.Stok)
-	// }
+	app := fiber.New()
 
-	// ===== READ (satu data spesifik) =====
-	// var berasPetruk Products
-	// if err := db.First(&berasPetruk, "nama = ?", "Beras Petruk 5kg").Error; err != nil {
-	// 	log.Println("Produk tidak ditemukan: ", err)
-	// 	return
-	// }
+	api := app.Group("/api")
+	api.Get("/inventory", inventoryHandler.GetAll)
+	api.Get("/inventory/:id", inventoryHandler.GetByID)
+	api.Post("/inventory", inventoryHandler.Create)
+	api.Post("/inventory/:id/flash-sale", inventoryHandler.FlashSale)
+	api.Post("/beli", inventoryHandler.Beli)
 
-	// ===== UPDATE =====
-	// jumlahBeli := 5
-	// if berasPetruk.Stok < jumlahBeli {
-	// 	fmt.Println("Stok beras tidak cukup")
-	// } else {
-	// 	berasPetruk.Stok -= jumlahBeli
-	// 	db.Save(&berasPetruk)
-	// 	fmt.Println("Stok berhasil diupdate, sisa:", berasPetruk.Stok)
-	// }
+	port := config.GetEnv("APP_PORT", "3000")
+	go func() {
+		if err := app.Listen(":" + port); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	log.Println("Server sudah jalan di http://localhost:" + port)
 
-	// ===== DELETE =====
-	// db.Delete(&berasPetruk)
-	// fmt.Println("Produk berhasil dihapus (soft delete)")
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
 
-	inventory.TokoKelontong(db)
+	log.Println("Mematikan server dengan bersih...")
+	if err := app.Shutdown(); err != nil {
+		log.Fatal("Gagal shutdown: ", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		log.Println("Gagal menutup koneksi database: ", err)
+	}
+
+	log.Println("Server berhasil dimatikan dengan bersih")
 }
